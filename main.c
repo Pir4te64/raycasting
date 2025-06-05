@@ -4,11 +4,14 @@
  */
 
 #include <GL/glut.h> // Librería para gráficos OpenGL con GLUT
-#include <stdio.h>   // Librería estándar de entrada/salida
-#include <stdlib.h>  // Librería estándar para funciones generales
+#include <math.h>
+#include <stdio.h>  // Librería estándar de entrada/salida
+#include <stdlib.h> // Librería estándar para funciones generales
+
+#define PI 3.1415926535
 
 // Variables globales para la posición del jugador
-float px, py;
+float px, py, pdx, pdy, pa;
 
 /**
  * drawPlayer - Dibuja la representación del jugador en la pantalla
@@ -23,12 +26,17 @@ float px, py;
  * 5. glEnd()               - Finaliza el modo de dibujo actual
  */
 void drawPlayer() {
-
   glColor3f(1, 1, 0); // Color amarillo (RGB)
   glPointSize(8);     // Tamaño del punto
   glBegin(GL_POINTS); // Comienza a dibujar puntos
   glVertex2i(px, py); // Dibuja el punto en la posición del jugador
   glEnd();            // Finaliza el dibujo
+
+  glLineWidth(3);
+  glBegin(GL_LINES);
+  glVertex2i(px, py);
+  glVertex2i(px + pdx * 5, py + pdy * 5);
+  glEnd();
 }
 
 // Definición del mapa: dimensiones y tamaño de cada celda
@@ -37,7 +45,7 @@ int mapX = 8, mapY = 8, mapS = 64;
 int map[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0,
     0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0,
-    0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 };
 
 /**
@@ -80,6 +88,55 @@ void drawMap2D() {
   }
 }
 
+void drawRays3D() {
+  int r, mx, my, mp, dof;
+  float rx, ry, ra, xo, yo;
+  ra = pa;
+  for (r = 0; r < 1; r++) {
+    // check horizontal lines
+    dof = 0;
+    float aTan = -1 / tan(ra);
+    // looking up
+    if (ra > PI) {
+      ry = (((int)py >> 6) << 6) - 0.0001;
+      rx = (py - ry) * aTan + px;
+      yo = -64;
+      xo = -yo * aTan;
+    }
+    // looking down
+    if (ra < PI) {
+      ry = (((int)py >> 6) << 6) + 64;
+      rx = (py - ry) * aTan + px;
+      yo = 64;
+      xo = -yo * aTan;
+    }
+    // looking straight left or right
+    if (ra == 0 || ra == PI) {
+      rx = px;
+      ry = py;
+      dof = 8;
+    }
+    while (dof < 8) {
+      mx = (int)(rx) >> 6;
+      my = (int)(ry) >> 6;
+      mp = my * mapX + mx;
+      if (mp < mapX * mapY && map[mp] == 1) {
+        dof = 8; // hit a wall
+      } else {
+        rx += xo;
+        ry += yo;
+        dof += 1; // next line
+      }
+    }
+    glColor3f(0, 1, 0);
+    glLineWidth(1);
+    glBegin(GL_LINES);
+    glVertex2i(px, py);
+    glVertex2i(rx, ry);
+    glEnd();
+  }
+}
+
 /**
  * display - Función principal de renderizado
  *
@@ -87,14 +144,16 @@ void drawMap2D() {
  * 1. glClear()         - Limpia los buffers de color y profundidad
  * 2. drawMap2D()       - Llama a la función que dibuja el mapa 2D
  * 3. drawPlayer()      - Llama a la función que dibuja al jugador
- * 4. glutSwapBuffers() - Intercambia los buffers frontal y trasero para mostrar
- * el resultado
+ * 4. drawRays3D()       - Llama a la función que dibuja los rayos
+ * 5. glutSwapBuffers() - Intercambia los buffers frontal y trasero para
+ * mostrar el resultado
  */
 void display() {
   glClear(GL_COLOR_BUFFER_BIT |
           GL_DEPTH_BUFFER_BIT); // Limpia la pantalla y el buffer de profundidad
   drawMap2D();                  // Dibuja el mapa
   drawPlayer();                 // Dibuja al jugador
+  drawRays3D();                 // Dibuja los rayos
   glutSwapBuffers();            // Intercambia los buffers (doble buffer)
 }
 
@@ -111,21 +170,35 @@ void display() {
  * derecha
  * 4. if (key == 'w') - Verifica si se presionó la tecla 'w' y mueve hacia
  * arriba
- * 5. if (key == 's') - Verifica si se presionó la tecla 's' y mueve hacia abajo
+ * 5. if (key == 's') - Verifica si se presionó la tecla 's' y mueve hacia
+ * abajo
  * 6. glutPostRedisplay() - Solicita a GLUT que redibuje la ventana
  */
 void buttons(unsigned char key, int x, int y) {
   if (key == 'a') {
-    px -= 5; // Mueve al jugador a la izquierda
+    pa -= 0.1;
+    if (pa < 0) {
+      pa += 2 * PI;
+    }
+    pdx = cos(pa) * 5;
+    pdy = sin(pa) * 5;
   }
+
   if (key == 'd') {
-    px += 5; // Mueve al jugador a la derecha
+    pa += 0.1;
+    if (pa > 2 * PI) {
+      pa -= 2 * PI;
+    }
+    pdx = cos(pa) * 5;
+    pdy = sin(pa) * 5;
   }
   if (key == 'w') {
-    py -= 5; // Mueve al jugador hacia arriba (en coordenadas invertidas)
+    px += pdx;
+    py += pdy;
   }
   if (key == 's') {
-    py += 5; // Mueve al jugador hacia abajo
+    px -= pdx;
+    py -= pdy;
   }
   glutPostRedisplay(); // Solicita redibujar la pantalla
 }
@@ -148,6 +221,8 @@ void init() {
       0);   // Define un sistema de coordenadas 2D: (izq, der, abajo, arriba)
   px = 300; // Posición inicial del jugador en X
   py = 300; // Posición inicial del jugador en Y
+  pdx = cos(pa) * 5;
+  pdy = sin(pa) * 5;
 }
 
 /**
@@ -155,11 +230,12 @@ void init() {
  *
  * Funcionamiento línea por línea:
  * 1. glutInit()           - Inicializa la biblioteca GLUT
- * 2. glutInitDisplayMode() - Configura el modo de visualización (doble buffer y
- * RGBA)
+ * 2. glutInitDisplayMode() - Configura el modo de visualización (doble buffer
+ * y RGBA)
  * 3. glutInitWindowSize() - Define el tamaño inicial de la ventana
  * 4. glutCreateWindow()   - Crea la ventana con el título especificado
- * 5. init()               - Llama a la función de inicialización personalizada
+ * 5. init()               - Llama a la función de inicialización
+ * personalizada
  * 6. glutDisplayFunc()    - Registra la función de callback para el dibujado
  * 7. glutKeyboardFunc()   - Registra la función de callback para el teclado
  * 8. glutMainLoop()       - Inicia el bucle principal de eventos de GLUT
